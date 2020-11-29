@@ -9,29 +9,23 @@ import github.javaguide.remoting.dto.RpcResponse;
 import github.javaguide.remoting.transport.RpcRequestTransport;
 import github.javaguide.remoting.transport.netty.client.NettyRpcClient;
 import github.javaguide.remoting.transport.socket.SocketRpcClient;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import net.sf.cglib.proxy.Enhancer;
 import net.sf.cglib.proxy.MethodInterceptor;
 import net.sf.cglib.proxy.MethodProxy;
 
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 
 /**
- * Dynamic proxy class.
- * When a dynamic proxy object calls a method, it actually calls the following invoke method.
- * It is precisely because of the dynamic proxy that the remote method called by the client is like calling the local method (the intermediate process is shielded)
- *
- * @author shuang.kou
- * @createTime 2020年05月10日 19:01:00
+ * Description: 使用cglib代理类
+ * Datetime:    2020/11/29   下午8:24
+ * Author:   王震
  */
+
 @Slf4j
-public class RpcClientProxy implements MethodInterceptor ,InvocationHandler {
+public class RpcClientProxyCglib implements MethodInterceptor {
 
     private static final String INTERFACE_NAME = "interfaceName";
 
@@ -41,7 +35,7 @@ public class RpcClientProxy implements MethodInterceptor ,InvocationHandler {
     private final RpcRequestTransport rpcRequestTransport;
     private final RpcServiceProperties rpcServiceProperties;
 
-    public RpcClientProxy(RpcRequestTransport rpcRequestTransport, RpcServiceProperties rpcServiceProperties) {
+    public RpcClientProxyCglib(RpcRequestTransport rpcRequestTransport, RpcServiceProperties rpcServiceProperties) {
         this.rpcRequestTransport = rpcRequestTransport;
         if (rpcServiceProperties.getGroup() == null) {
             rpcServiceProperties.setGroup("");
@@ -53,42 +47,23 @@ public class RpcClientProxy implements MethodInterceptor ,InvocationHandler {
     }
 
 
-    public RpcClientProxy(RpcRequestTransport rpcRequestTransport) {
+    public RpcClientProxyCglib(RpcRequestTransport rpcRequestTransport) {
         this.rpcRequestTransport = rpcRequestTransport;
         this.rpcServiceProperties = RpcServiceProperties.builder().group("").version("").build();
     }
 
-    /**
-     * get the proxy object
-     */
-    @SuppressWarnings("unchecked")
-    public <T> T getProxy(Class<T> clazz) {
-        if(clazz.isInterface()){
-            return (T) Proxy.newProxyInstance(clazz.getClassLoader(),new Class[]{clazz},this);
-        }else{
-            Enhancer enhancer = new Enhancer();
-            enhancer.setSuperclass(clazz);
-            enhancer.setCallback(this);
-            return (T) enhancer.create();
-        }
-    }
+    public <T> T getProxy(Class clz){
+        Enhancer enhancer = new Enhancer();
+        enhancer.setSuperclass(clz);
+        enhancer.setCallback(this);
+        return (T) enhancer.create();
 
-    // jdk 动态代理实现的方法
-    @Override
-    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        return this.doInvoke(proxy,method,args);
     }
 
 
-    // cglib 实现的方法
+
     @Override
     public Object intercept(Object obj, Method method, Object[] args, MethodProxy proxy) throws Throwable {
-        return this.doInvoke(proxy,method,args);
-    }
-
-
-
-    public Object doInvoke(Object proxy, Method method, Object[] args) throws Throwable {
         log.info("invoked method: [{}]", method.getName());
         RpcRequest rpcRequest = RpcRequest.builder().methodName(method.getName())
                 .parameters(args)
@@ -106,10 +81,8 @@ public class RpcClientProxy implements MethodInterceptor ,InvocationHandler {
         if (rpcRequestTransport instanceof SocketRpcClient) {
             rpcResponse = (RpcResponse<Object>) rpcRequestTransport.sendRpcRequest(rpcRequest);
         }
-        this.check(rpcResponse, rpcRequest);
         return rpcResponse.getData();
     }
-
 
     private void check(RpcResponse<Object> rpcResponse, RpcRequest rpcRequest) {
         if (rpcResponse == null) {
@@ -124,7 +97,4 @@ public class RpcClientProxy implements MethodInterceptor ,InvocationHandler {
             throw new RpcException(RpcErrorMessageEnum.SERVICE_INVOCATION_FAILURE, INTERFACE_NAME + ":" + rpcRequest.getInterfaceName());
         }
     }
-
-
-
 }
